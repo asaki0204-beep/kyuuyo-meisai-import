@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import re
+import unicodedata
 import pandas as pd
 from google import genai
 
@@ -119,7 +120,8 @@ def _to_yayoi_txt(rows: list) -> bytes:
     writer = csv.writer(buf, quoting=csv.QUOTE_NONNUMERIC, lineterminator="\r\n")
     for row in rows:
         safe = [
-            c.encode("cp932", errors="replace").decode("cp932") if isinstance(c, str) else c
+            unicodedata.normalize("NFKC", c).encode("cp932", errors="replace").decode("cp932")
+            if isinstance(c, str) else c
             for c in row
         ]
         writer.writerow(safe)
@@ -235,11 +237,11 @@ def main():
                      delta_color="inverse")
 
         if diff == 0:
-            st.success("✅ 貸借一致 — TXT生成できます")
+            st.success("✅ 貸借一致 — TXTを自動生成しました（下のダウンロードボタンから取得できます）")
         else:
             st.warning(f"⚠️ 差額 ¥{diff:,} — 数値を修正してください（貸借が一致しないと生成できません）")
 
-        if st.button("📄 弥生TXT生成", type="primary", disabled=(diff != 0)):
+        if diff == 0:
             merged = {
                 "締め日":         date_in,
                 "役員報酬":       yakuin,
@@ -255,6 +257,8 @@ def main():
             txt_bytes = _to_yayoi_txt(rows)
             fname = output_filename(date_in)
             st.session_state.output = (fname, txt_bytes, len(rows))
+        else:
+            st.session_state.output = None
 
     if st.session_state.output:
         fname, txt_bytes, nrows = st.session_state.output
