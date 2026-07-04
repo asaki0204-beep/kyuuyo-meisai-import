@@ -150,12 +150,16 @@ def main():
 
     with st.sidebar:
         st.header("⚙ 設定")
-        api_key = st.text_input(
-            "Gemini APIキー",
-            value=_get_secret("GEMINI_API_KEY"),
-            type="password",
-            help="GeminiによるPDF解析に使用します",
-        )
+        _secret_key = _get_secret("GEMINI_API_KEY")
+        if _secret_key:
+            st.success("Gemini APIキー: Secrets設定済み")
+            api_key = _secret_key
+        else:
+            api_key = st.text_input(
+                "Gemini APIキー",
+                type="password",
+                help="GeminiによるPDF解析に使用します",
+            )
         gemini_model = st.selectbox("モデル", GEMINI_MODELS, index=0)
 
     uploaded = st.file_uploader(
