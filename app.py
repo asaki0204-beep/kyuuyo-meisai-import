@@ -9,7 +9,11 @@ import unicodedata
 import pandas as pd
 from google import genai
 
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
+]
 
 _PAYROLL_PROMPT = """\
 この給与支給控除一覧表からデータを抽出し、JSONのみ返せ。説明・コードフェンス不要。
@@ -122,12 +126,21 @@ def payroll_yayoi_rows(data: dict) -> list:
     return rows
 
 
+# NFKC正規化で変換できないCJK互換漢字（Unicode分解マッピングなし）の変換テーブル
+# CP932のIBM拡張文字（0xFA40-0xFC4B）は弥生会計が受け付けないため標準JIS文字に変換する
+# 新たな文字でエラーが出た場合はここに追加する
+_IBM_EXT_TABLE = str.maketrans({
+    '﨑': '崎',  # 﨑ぱ崎（尾﨑・宮﨑など）
+})
+
+
 def _to_yayoi_txt(rows: list) -> bytes:
     buf = io.StringIO()
     writer = csv.writer(buf, quoting=csv.QUOTE_NONNUMERIC, lineterminator="\r\n")
     for row in rows:
         safe = [
-            unicodedata.normalize("NFKC", c).encode("cp932", errors="replace").decode("cp932")
+            unicodedata.normalize("NFKC", c).translate(_IBM_EXT_TABLE)
+            .encode("cp932", errors="replace").decode("cp932")
             if isinstance(c, str) else c
             for c in row
         ]
@@ -165,7 +178,7 @@ def main():
                 type="password",
                 help="GeminiによるPDF解析に使用します",
             )
-        gemini_model = GEMINI_MODEL
+        gemini_model = st.selectbox("Geminiモデル", GEMINI_MODELS)
 
     uploaded = st.file_uploader(
         "給与支給控除一覧表 PDF をアップロード",
