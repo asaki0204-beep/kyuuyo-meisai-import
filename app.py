@@ -14,13 +14,14 @@ GEMINI_MODEL = "gemini-2.5-flash"
 _PAYROLL_PROMPT = """\
 この給与支給控除一覧表からデータを抽出し、JSONのみ返せ。説明・コードフェンス不要。
 
-{"締め日":"YYYY/MM/DD","役員報酬":数値,"基本給":数値,"通勤手当":数値,"旅費手当":数値,"社会保険料合計":数値,"所得税":数値,"住民税":数値,"従業員":[{"氏名":"氏名","差引支給額":数値,"種別":"役員か社員"}]}
+{"締め日":"YYYY/MM/DD","役員報酬":数値,"基本給":数値,"通勤手当非課税":数値,"通勤手当課税":数値,"旅費手当":数値,"社会保険料合計":数値,"所得税":数値,"住民税":数値,"従業員":[{"氏名":"氏名","差引支給額":数値,"種別":"役員か社員"}]}
 
 注意:
 - 締め日は「（YYYY年MM月DD日締）」や「YYYY MM DD」形式の締切日（支給日ではない）
 - 社会保険料合計＝健康保険料＋介護保険料＋厚生年金保険料＋雇用保険料の合計（従業員負担分）
 - 従業員一覧は全員分。役員報酬対象者は種別「役員」、それ以外は「社員」
-- 通勤手当・旅費手当がない場合は0
+- 通勤手当は非課税分（通勤手当(非課税)）と課税分（通勤手当(課税)）を分けて抽出。ない場合は0
+- 旅費手当がない場合は0
 - 2ページ目の総合計欄の数値を優先使用"""
 
 
@@ -69,10 +70,11 @@ def payroll_yayoi_rows(data: dict) -> list:
             "", "", "", "", "",              # 21-25: 生成元・仕訳メモ・付箋1・付箋2・調整
         ]
 
-    yakuin = int(data.get("役員報酬", 0) or 0)
-    kyuyo  = int(data.get("基本給",   0) or 0)
-    tsukin = int(data.get("通勤手当", 0) or 0)
-    ryohi  = int(data.get("旅費手当", 0) or 0)
+    yakuin     = int(data.get("役員報酬",     0) or 0)
+    kyuyo      = int(data.get("基本給",       0) or 0)
+    tsukin_hi  = int(data.get("通勤手当非課税", 0) or 0)
+    tsukin_ka  = int(data.get("通勤手当課税",   0) or 0)
+    ryohi      = int(data.get("旅費手当",     0) or 0)
 
     # 借方: 支給項目
     if yakuin:
@@ -81,10 +83,14 @@ def payroll_yayoi_rows(data: dict) -> list:
     if kyuyo:
         rows.append(prow("2100", "給料手当", "", "対象外", kyuyo,
                          "", "", "対象外", 0, "給与"))
-    if tsukin:
-        rows.append(prow("2100", "旅費交通費", "通勤手当", "課対仕入込10%適格", tsukin,
+    if tsukin_hi:
+        rows.append(prow("2100", "旅費交通費", "通勤手当", "課対仕入込10%適格", tsukin_hi,
                          "", "", "対象外", 0,
                          "通勤手当（非課税）　※「帳簿のみ保存の特例」適用"))
+    if tsukin_ka:
+        rows.append(prow("2100", "給料手当", "", "課対仕入込10%適格", tsukin_ka,
+                         "", "", "対象外", 0,
+                         "通勤手当（課税）　※「帳簿のみ保存の特例」適用"))
     if ryohi:
         rows.append(prow("2100", "旅費交通費", "旅費日当", "課対仕入込10%適格", ryohi,
                          "", "", "対象外", 0, "旅費日当"))
@@ -189,11 +195,12 @@ def main():
         date_in = st.text_input("締め日（YYYY/MM/DD）", value=data.get("締め日", ""))
 
         st.markdown("**支給項目**")
-        c1, c2, c3, c4 = st.columns(4)
-        yakuin = c1.number_input("役員報酬",   value=int(data.get("役員報酬",   0) or 0), min_value=0, step=1)
-        kyuyo  = c2.number_input("基本給",     value=int(data.get("基本給",     0) or 0), min_value=0, step=1)
-        tsukin = c3.number_input("通勤手当",   value=int(data.get("通勤手当",   0) or 0), min_value=0, step=1)
-        ryohi  = c4.number_input("旅費手当",   value=int(data.get("旅費手当",   0) or 0), min_value=0, step=1)
+        c1, c2, c3, c4, c5 = st.columns(5)
+        yakuin    = c1.number_input("役員報酬",        value=int(data.get("役員報酬",       0) or 0), min_value=0, step=1)
+        kyuyo     = c2.number_input("基本給",          value=int(data.get("基本給",         0) or 0), min_value=0, step=1)
+        tsukin_hi = c3.number_input("通勤手当（非課税）", value=int(data.get("通勤手当非課税", 0) or 0), min_value=0, step=1)
+        tsukin_ka = c4.number_input("通勤手当（課税）",   value=int(data.get("通勤手当課税",   0) or 0), min_value=0, step=1)
+        ryohi     = c5.number_input("旅費手当",        value=int(data.get("旅費手当",       0) or 0), min_value=0, step=1)
 
         st.markdown("**控除項目**")
         d1, d2, d3 = st.columns(3)
@@ -225,7 +232,7 @@ def main():
             if str(r.get("氏名", "")).strip()
         ]
 
-        dr_total = yakuin + kyuyo + tsukin + ryohi
+        dr_total = yakuin + kyuyo + tsukin_hi + tsukin_ka + ryohi
         cr_total = shakai + shotoku + jumin + sum(e["差引支給額"] for e in emp_list)
         diff = dr_total - cr_total
 
@@ -246,7 +253,8 @@ def main():
                 "締め日":         date_in,
                 "役員報酬":       yakuin,
                 "基本給":         kyuyo,
-                "通勤手当":       tsukin,
+                "通勤手当非課税":  tsukin_hi,
+                "通勤手当課税":    tsukin_ka,
                 "旅費手当":       ryohi,
                 "社会保険料合計": shakai,
                 "所得税":         shotoku,
