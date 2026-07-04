@@ -8,11 +8,7 @@ import re
 import pandas as pd
 from google import genai
 
-GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-2.0-flash-lite",
-]
+GEMINI_MODEL = "gemini-2.5-flash"
 
 _PAYROLL_PROMPT = """\
 この給与支給控除一覧表からデータを抽出し、JSONのみ返せ。説明・コードフェンス不要。
@@ -160,7 +156,7 @@ def main():
                 type="password",
                 help="GeminiによるPDF解析に使用します",
             )
-        gemini_model = st.selectbox("モデル", GEMINI_MODELS, index=0)
+        gemini_model = GEMINI_MODEL
 
     uploaded = st.file_uploader(
         "給与支給控除一覧表 PDF をアップロード",
